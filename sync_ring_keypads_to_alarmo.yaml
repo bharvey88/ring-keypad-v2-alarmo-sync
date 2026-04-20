@@ -1,0 +1,359 @@
+blueprint:
+  name: Sync Ring Keypad(s) to Alarmo
+  description: >
+    Multi-keypad version of the Ring Keypad V2 -> Alarmo sync blueprint.
+
+
+    Improvements over `keypad_blueprint.yaml`:
+      - Accepts multiple Ring Keypad V2 devices in one automation (no more
+        duplicate automations per keypad).
+      - Per-keypad failure feedback: invalid_code / open_sensors buzzes ONLY
+        the keypad that initiated the arm, not every keypad. Uses an inline
+        `wait_for_trigger` inside the arm branch rather than global handlers.
+      - Incorporates the PR #43 entity_id filter on `alarmo_failed_to_arm`
+        events so other Alarmo panels (if any) don't cross-trigger feedback.
+      - Replaces the top-level `from_state != unknown` template condition
+        with the native `not_from: unknown` option on the state triggers.
+
+
+    See https://github.com/ImSorryButWho/HomeAssistantNotes/blob/main/RingKeypadV2.md
+    for Ring Keypad V2 background info.
+  domain: automation
+  input:
+    keypads:
+      name: Ring Keypads
+      description: One or more Ring Keypad V2 devices to sync with Alarmo.
+      selector:
+        device:
+          manufacturer: Ring
+          integration: zwave_js
+          multiple: true
+    alarm:
+      name: Alarm Control Panel entity
+      description: The Alarmo alarm_control_panel entity to synchronize with.
+      selector:
+        entity:
+          domain: alarm_control_panel
+          integration: alarmo
+    selected_action_police:
+      name: Selected Action Police
+      description: Action to run when the Police button is pressed (hold to trigger).
+      default: []
+      selector:
+        action:
+    selected_action_fire:
+      name: Selected Action Fire
+      description: Action to run when the Fire button is pressed (hold to trigger).
+      default: []
+      selector:
+        action:
+    selected_action_medical:
+      name: Selected Action Medical
+      description: Action to run when the Medical button is pressed (hold to trigger).
+      default: []
+      selector:
+        action:
+
+mode: parallel
+max: 10
+
+variables:
+  keypads: !input keypads
+  alarm: !input alarm
+  formatted_delay: >
+    {% set delay = state_attr(alarm, 'delay') %}
+    {% set total_seconds = delay if delay is not none else 0 %}
+    {% set minutes = total_seconds // 60 %}
+    {% set seconds = total_seconds % 60 %}
+    {{ minutes }}m{{ seconds }}s
+
+trigger:
+  # Keypad button events — no device filter here; branches filter via
+  # `trigger.event.data.device_id in keypads` so a single automation can
+  # service any number of selected keypads.
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 2
+    id: code_entered
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 3
+    id: keypad_disarm
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 5
+    id: keypad_arm_away
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 6
+    id: keypad_arm_home
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 16
+    id: keypad_fire
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 17
+    id: keypad_police
+  - platform: event
+    event_type: zwave_js_notification
+    event_data:
+      command_class: 111
+      event_type: 19
+    id: keypad_medical
+
+  # Alarmo state transitions — feedback is broadcast to all keypads.
+  - platform: state
+    entity_id: !input alarm
+    to: disarmed
+    not_from: unknown
+    id: alarm_disarmed
+  - platform: state
+    entity_id: !input alarm
+    to: arming
+    not_from: unknown
+    id: alarm_arming
+  - platform: state
+    entity_id: !input alarm
+    to: armed_away
+    not_from: unknown
+    id: alarm_armed_away
+  - platform: state
+    entity_id: !input alarm
+    to: armed_home
+    not_from: unknown
+    id: alarm_armed_home
+  - platform: state
+    entity_id: !input alarm
+    to: pending
+    not_from: unknown
+    id: alarm_pending
+  - platform: state
+    entity_id: !input alarm
+    to: triggered
+    not_from: unknown
+    id: alarm_triggered
+
+action:
+  choose:
+    # ─── Disarm ────────────────────────────────────────────────
+    - conditions:
+        - condition: trigger
+          id:
+            - code_entered
+            - keypad_disarm
+        - condition: template
+          value_template: "{{ trigger.event.data.device_id in keypads }}"
+      sequence:
+        - service: alarmo.disarm
+          data:
+            entity_id: !input alarm
+            code: >
+              {% if trigger.event.data.event_data != none %}
+                {{ trigger.event.data.event_data }}
+              {% endif %}
+
+    # ─── Arm (with inline per-keypad failure feedback) ─────────
+    - conditions:
+        - condition: trigger
+          id:
+            - keypad_arm_away
+            - keypad_arm_home
+        - condition: template
+          value_template: "{{ trigger.event.data.device_id in keypads }}"
+        - condition: state
+          entity_id: !input alarm
+          state: disarmed
+      sequence:
+        - variables:
+            source_keypad: "{{ trigger.event.data.device_id }}"
+            arm_mode: "{{ trigger.id.split('_')[2] }}"
+            arm_code: >
+              {% if trigger.event.data.event_data != none %}
+                {{ trigger.event.data.event_data }}
+              {% endif %}
+        - service: alarmo.arm
+          data:
+            entity_id: !input alarm
+            mode: "{{ arm_mode }}"
+            force: false
+            code: "{{ arm_code }}"
+        # Wait up to 5s for one of three outcomes — success, invalid PIN,
+        # or open sensors. Only the source keypad gets failure feedback.
+        - wait_for_trigger:
+            - platform: event
+              event_type: zwave_js_notification
+              event_data:
+                command_class: 111
+                event_type: 2
+                event_data: null
+              id: arm_success
+            - platform: event
+              event_type: alarmo_failed_to_arm
+              event_data:
+                entity_id: !input alarm
+                reason: invalid_code
+              id: arm_invalid_code
+            - platform: event
+              event_type: alarmo_failed_to_arm
+              event_data:
+                entity_id: !input alarm
+                reason: open_sensors
+              id: arm_open_sensors
+          timeout: 5
+          continue_on_timeout: true
+        - choose:
+            - conditions: "{{ wait.trigger is not none and wait.trigger.id == 'arm_success' }}"
+              sequence:
+                - service: alarmo.arm
+                  data:
+                    entity_id: !input alarm
+                    mode: "{{ arm_mode }}"
+                    force: true
+                    code: "{{ arm_code }}"
+            - conditions: "{{ wait.trigger is not none and wait.trigger.id == 'arm_invalid_code' }}"
+              sequence:
+                - service: zwave_js.set_value
+                  target:
+                    device_id: "{{ source_keypad }}"
+                  data:
+                    command_class: "135"
+                    endpoint: "0"
+                    property: "9"
+                    property_key: "1"
+                    value: 99
+            - conditions: "{{ wait.trigger is not none and wait.trigger.id == 'arm_open_sensors' }}"
+              sequence:
+                - service: zwave_js.set_value
+                  target:
+                    device_id: "{{ source_keypad }}"
+                  data:
+                    command_class: "135"
+                    endpoint: "0"
+                    property: "16"
+                    property_key: "1"
+                    value: 99
+
+    # ─── State feedback broadcast to all keypads ───────────────
+    - conditions:
+        - condition: trigger
+          id: alarm_disarmed
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "2"
+                  property_key: "1"
+                  value: 99
+    - conditions:
+        - condition: trigger
+          id: alarm_armed_away
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "11"
+                  property_key: "1"
+                  value: 99
+    - conditions:
+        - condition: trigger
+          id: alarm_armed_home
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "10"
+                  property_key: "1"
+                  value: 99
+    - conditions:
+        - condition: trigger
+          id: alarm_arming
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "18"
+                  property_key: "timeout"
+                  value: "{{ formatted_delay }}"
+    - conditions:
+        - condition: trigger
+          id: alarm_pending
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "17"
+                  property_key: "timeout"
+                  value: "{{ formatted_delay }}"
+    - conditions:
+        - condition: trigger
+          id: alarm_triggered
+      sequence:
+        - repeat:
+            for_each: "{{ keypads }}"
+            sequence:
+              - service: zwave_js.set_value
+                target:
+                  device_id: "{{ repeat.item }}"
+                data:
+                  command_class: "135"
+                  endpoint: "0"
+                  property: "13"
+                  property_key: "9"
+                  value: 99
+
+    # ─── Panic buttons — user-defined actions ──────────────────
+    - conditions:
+        - condition: trigger
+          id: keypad_fire
+      sequence: !input selected_action_fire
+    - conditions:
+        - condition: trigger
+          id: keypad_police
+      sequence: !input selected_action_police
+    - conditions:
+        - condition: trigger
+          id: keypad_medical
+      sequence: !input selected_action_medical

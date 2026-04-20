@@ -142,3 +142,16 @@ The following tables summarize the indicators by `property`s that actually do an
 I've created a [blueprint](https://github.com/ImSorryButWho/HomeAssistantNotes/blob/main/keypad_blueprint.yaml) that will create an automation which handles all the basic interactions between an `alarm_control_panel` instance and the Ring Keypad v2.  Pair the keypad following the instructions above, and configure an Alarmo instance in your Home Assistant.  Then, you can install the Blueprint above and create the automation, giving it the device for the keypad, the entity_id for the alarm instance, as well as the Z-Wave Node ID for the keypad (necessary to identify the events of interest), and the entry and exit delay times for the alarm.
 
 Please feel free to send pull requests for improvements.  This is my first Blueprint.
+
+## Multi-Keypad Blueprint (Sync Ring Keypad(s) to Alarmo)
+
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbharvey88%2FHomeAssistantNotes%2Fblob%2Fmain%2Fsync_ring_keypads_to_alarmo.yaml)
+
+If you have more than one Ring Keypad V2, [`sync_ring_keypads_to_alarmo.yaml`](https://github.com/bharvey88/HomeAssistantNotes/blob/main/sync_ring_keypads_to_alarmo.yaml) is a drop-in alternative to `keypad_blueprint.yaml` that services every selected keypad from a single automation. Improvements over the original blueprint:
+
+- **Multi-keypad input** — the `keypads` selector uses `multiple: true`, so you can pick any number of paired Ring Keypads instead of duplicating the automation per device.
+- **Per-keypad failure feedback** — `invalid_code` and `open_sensors` buzz only the keypad that initiated the arm, not every keypad. This is done with an inline `wait_for_trigger` inside the arm branch that listens for success, invalid PIN, or open-sensors in parallel, and routes feedback using a `source_keypad` variable captured from the trigger.
+- **Entity-scoped failure filter** — the `alarmo_failed_to_arm` waits include `entity_id: !input alarm`, so installs with more than one Alarmo panel don't cross-trigger feedback (equivalent to [PR #43](https://github.com/ImSorryButWho/HomeAssistantNotes/pull/43)).
+- **Native unknown-state filter** — uses `not_from: unknown` on the state triggers instead of a top-level template condition, so restart/reload noise is filtered at the trigger layer.
+
+Pair your keypads following the instructions above, then import the blueprint and create one automation that targets all of them.
