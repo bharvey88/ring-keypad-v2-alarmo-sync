@@ -145,9 +145,9 @@ Please feel free to send pull requests for improvements.  This is my first Bluep
 
 ## Multi-Keypad Blueprint (Sync Ring Keypad(s) to Alarmo)
 
-[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbharvey88%2FHomeAssistantNotes%2Fblob%2Fmain%2Fsync_ring_keypads_to_alarmo.yaml)
+[![Open your Home Assistant instance and show the blueprint import dialog with a specific blueprint pre-filled.](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Fbharvey88%2Fring-keypad-v2-alarmo-sync%2Fblob%2Fmain%2Fsync_ring_keypads_to_alarmo.yaml)
 
-If you have more than one Ring Keypad V2, [`sync_ring_keypads_to_alarmo.yaml`](https://github.com/bharvey88/HomeAssistantNotes/blob/main/sync_ring_keypads_to_alarmo.yaml) is a drop-in alternative to `keypad_blueprint.yaml` that services every selected keypad from a single automation. Improvements over the original blueprint:
+If you have more than one Ring Keypad V2, [`sync_ring_keypads_to_alarmo.yaml`](https://github.com/bharvey88/ring-keypad-v2-alarmo-sync/blob/main/sync_ring_keypads_to_alarmo.yaml) is a drop-in alternative to `keypad_blueprint.yaml` that services every selected keypad from a single automation. Improvements over the original blueprint:
 
 - **Multi-keypad input** — the `keypads` selector uses `multiple: true`, so you can pick any number of paired Ring Keypads instead of duplicating the automation per device.
 - **Per-keypad failure feedback** — `invalid_code` and `open_sensors` buzz only the keypad that initiated the arm, not every keypad. This is done with an inline `wait_for_trigger` inside the arm branch that listens for success, invalid PIN, or open-sensors in parallel, and routes feedback using a `source_keypad` variable captured from the trigger.
