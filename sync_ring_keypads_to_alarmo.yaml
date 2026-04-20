@@ -1,23 +1,22 @@
 blueprint:
   name: Sync Ring Keypad(s) to Alarmo
   description: >
-    Multi-keypad version of the Ring Keypad V2 -> Alarmo sync blueprint.
+    Keeps one or more Ring Keypad V2 devices in sync with Alarmo.
 
 
-    Improvements over `keypad_blueprint.yaml`:
-      - Accepts multiple Ring Keypad V2 devices in one automation (no more
-        duplicate automations per keypad).
-      - Per-keypad failure feedback: invalid_code / open_sensors buzzes ONLY
-        the keypad that initiated the arm, not every keypad. Uses an inline
-        `wait_for_trigger` inside the arm branch rather than global handlers.
-      - Incorporates the PR #43 entity_id filter on `alarmo_failed_to_arm`
-        events so other Alarmo panels (if any) don't cross-trigger feedback.
-      - Replaces the top-level `from_state != unknown` template condition
-        with the native `not_from: unknown` option on the state triggers.
+    Arming or disarming from any selected keypad updates Alarmo. Alarmo's
+    state (arming countdown, armed away/home, entry delay, triggered siren)
+    drives the LEDs and tones on every selected keypad. If the entered PIN
+    is invalid, or sensors are open while arming, only the originating
+    keypad gets the error feedback.
 
 
-    See https://github.com/ImSorryButWho/HomeAssistantNotes/blob/main/RingKeypadV2.md
-    for Ring Keypad V2 background info.
+    Fire / Police / Medical panic buttons accept optional action sequences —
+    leave them empty to do nothing.
+
+
+    Based on ImSorryButWho's keypad_blueprint.yaml:
+    https://github.com/ImSorryButWho/HomeAssistantNotes
   domain: automation
   input:
     keypads:
