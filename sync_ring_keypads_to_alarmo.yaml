@@ -1,22 +1,15 @@
 blueprint:
   name: Sync Ring Keypad(s) to Alarmo
-  description: >
-    Keeps one or more Ring Keypad V2 devices in sync with Alarmo.
+  description: |
+    🔐 Keeps one or more Ring Keypad V2 devices in sync with Alarmo.
 
+    **Features**
+    - 🔑 Arm / disarm from any keypad controls Alarmo
+    - 💡 Alarmo state drives LEDs and tones on every keypad
+    - 🎯 Invalid PIN or open sensors buzz only the originating keypad
+    - 🚨 Optional Fire / Police / Medical panic button actions
 
-    Arming or disarming from any selected keypad updates Alarmo. Alarmo's
-    state (arming countdown, armed away/home, entry delay, triggered siren)
-    drives the LEDs and tones on every selected keypad. If the entered PIN
-    is invalid, or sensors are open while arming, only the originating
-    keypad gets the error feedback.
-
-
-    Fire / Police / Medical panic buttons accept optional action sequences —
-    leave them empty to do nothing.
-
-
-    Based on ImSorryButWho's keypad_blueprint.yaml:
-    https://github.com/ImSorryButWho/HomeAssistantNotes
+    🔗 Based on [ImSorryButWho's keypad_blueprint.yaml](https://github.com/ImSorryButWho/HomeAssistantNotes).
   domain: automation
   input:
     keypads:
