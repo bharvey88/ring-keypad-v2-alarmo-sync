@@ -150,6 +150,8 @@ action:
         - condition: template
           value_template: "{{ trigger.event.data.device_id in keypads }}"
       sequence:
+        - variables:
+            source_keypad: "{{ trigger.event.data.device_id }}"
         - service: alarmo.disarm
           data:
             entity_id: !input alarm
@@ -157,6 +159,25 @@ action:
               {% if trigger.event.data.event_data != none %}
                 {{ trigger.event.data.event_data }}
               {% endif %}
+        # alarmo.disarm has checked the code by the time it returns, so an
+        # alarm that is still not disarmed means the code was rejected. Answer
+        # the source keypad with "code not accepted" instead of silence.
+        - if:
+            - condition: not
+              conditions:
+                - condition: state
+                  entity_id: !input alarm
+                  state: disarmed
+          then:
+            - service: zwave_js.set_value
+              target:
+                device_id: "{{ source_keypad }}"
+              data:
+                command_class: "135"
+                endpoint: "0"
+                property: "9"
+                property_key: "1"
+                value: 99
 
     # ─── Arm (with inline per-keypad failure feedback) ─────────
     - conditions:
