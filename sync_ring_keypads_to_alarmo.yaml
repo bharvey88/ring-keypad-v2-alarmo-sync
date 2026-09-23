@@ -52,10 +52,13 @@ max: 10
 variables:
   keypads: !input keypads
   alarm: !input alarm
-  # Alarmo's current exit/entry delay, split into the Indicator CC
-  # timeout properties (0x06 minutes, 0x07 seconds).
-  delay_minutes: "{{ (state_attr(alarm, 'delay') or 0) | int // 60 }}"
-  delay_seconds: "{{ (state_attr(alarm, 'delay') or 0) | int % 60 }}"
+  # Alarmo's current exit/entry delay as [propertyId, value] pairs for the
+  # Indicator CC timeout (0x06 minutes, 0x07 seconds). Zero parts are left
+  # out: the keypad shows the bar but stays silent if it gets minutes = 0.
+  delay_props: >-
+    {%- set d = (state_attr(alarm, 'delay') or 0) | int -%}
+    {%- set m, s = d // 60, d % 60 -%}
+    {{ ([[6, m]] if m else []) + ([[7, s]] if s or not m else []) }}
 
 trigger:
   # Keypad button events — no device filter here; branches filter via
@@ -306,12 +309,12 @@ action:
                   endpoint: "0"
                   method_name: set
                   parameters:
-                    - - indicatorId: 18
-                        propertyId: 6
-                        value: "{{ delay_minutes }}"
-                      - indicatorId: 18
-                        propertyId: 7
-                        value: "{{ delay_seconds }}"
+                    - >-
+                      {%- set ns = namespace(objs=[]) -%}
+                      {%- for p in delay_props -%}
+                      {%- set ns.objs = ns.objs + [{'indicatorId': 18, 'propertyId': p[0], 'value': p[1]}] -%}
+                      {%- endfor -%}
+                      {{ ns.objs }}
     - conditions:
         - condition: trigger
           id: alarm_pending
@@ -330,12 +333,12 @@ action:
                   endpoint: "0"
                   method_name: set
                   parameters:
-                    - - indicatorId: 17
-                        propertyId: 6
-                        value: "{{ delay_minutes }}"
-                      - indicatorId: 17
-                        propertyId: 7
-                        value: "{{ delay_seconds }}"
+                    - >-
+                      {%- set ns = namespace(objs=[]) -%}
+                      {%- for p in delay_props -%}
+                      {%- set ns.objs = ns.objs + [{'indicatorId': 17, 'propertyId': p[0], 'value': p[1]}] -%}
+                      {%- endfor -%}
+                      {{ ns.objs }}
     - conditions:
         - condition: trigger
           id: alarm_triggered
