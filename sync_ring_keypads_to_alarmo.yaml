@@ -52,12 +52,10 @@ max: 10
 variables:
   keypads: !input keypads
   alarm: !input alarm
-  formatted_delay: >
-    {% set delay = state_attr(alarm, 'delay') %}
-    {% set total_seconds = delay if delay is not none else 0 %}
-    {% set minutes = total_seconds // 60 %}
-    {% set seconds = total_seconds % 60 %}
-    {{ minutes }}m{{ seconds }}s
+  # Alarmo's current exit/entry delay, split into the Indicator CC
+  # timeout properties (0x06 minutes, 0x07 seconds).
+  delay_minutes: "{{ (state_attr(alarm, 'delay') or 0) | int // 60 }}"
+  delay_seconds: "{{ (state_attr(alarm, 'delay') or 0) | int % 60 }}"
 
 trigger:
   # Keypad button events — no device filter here; branches filter via
@@ -247,6 +245,7 @@ action:
             for_each: "{{ keypads }}"
             sequence:
               - service: zwave_js.set_value
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
@@ -263,6 +262,7 @@ action:
             for_each: "{{ keypads }}"
             sequence:
               - service: zwave_js.set_value
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
@@ -279,6 +279,7 @@ action:
             for_each: "{{ keypads }}"
             sequence:
               - service: zwave_js.set_value
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
@@ -294,15 +295,23 @@ action:
         - repeat:
             for_each: "{{ keypads }}"
             sequence:
-              - service: zwave_js.set_value
+              # Invoke the CC API directly: the "timeout" value only exists
+              # after the keypad has reported it, so set_value can fail on it.
+              - service: zwave_js.invoke_cc_api
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
                   command_class: "135"
                   endpoint: "0"
-                  property: "18"
-                  property_key: "timeout"
-                  value: "{{ formatted_delay }}"
+                  method_name: set
+                  parameters:
+                    - - indicatorId: 18
+                        propertyId: 6
+                        value: "{{ delay_minutes }}"
+                      - indicatorId: 18
+                        propertyId: 7
+                        value: "{{ delay_seconds }}"
     - conditions:
         - condition: trigger
           id: alarm_pending
@@ -310,15 +319,23 @@ action:
         - repeat:
             for_each: "{{ keypads }}"
             sequence:
-              - service: zwave_js.set_value
+              # Invoke the CC API directly: the "timeout" value only exists
+              # after the keypad has reported it, so set_value can fail on it.
+              - service: zwave_js.invoke_cc_api
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
                   command_class: "135"
                   endpoint: "0"
-                  property: "17"
-                  property_key: "timeout"
-                  value: "{{ formatted_delay }}"
+                  method_name: set
+                  parameters:
+                    - - indicatorId: 17
+                        propertyId: 6
+                        value: "{{ delay_minutes }}"
+                      - indicatorId: 17
+                        propertyId: 7
+                        value: "{{ delay_seconds }}"
     - conditions:
         - condition: trigger
           id: alarm_triggered
@@ -327,6 +344,7 @@ action:
             for_each: "{{ keypads }}"
             sequence:
               - service: zwave_js.set_value
+                continue_on_error: true
                 target:
                   device_id: "{{ repeat.item }}"
                 data:
